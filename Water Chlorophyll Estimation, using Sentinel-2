@@ -1,0 +1,44 @@
+// Region of interest: Inland of Water
+
+Map.centerObject(geometry2)  //to focus on study
+
+var sentinel = imageCollection        //Image variable for sentinel-2
+.filterDate('2021-09-01','2021-10-01')
+.filterBounds(geometry)
+// call of satellite data where cloud cover > 45% to exclude cloudy images for processing.
+.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',45))
+
+// for spectral index analysis we will use only 12 bands
+
+// Calculate the vlaue for targeted spactral index
+.map(function(img){
+  var bands = img.select('B.*').multiply(0.0001)
+// Calculate normalized difference water index - to defferentiate water body to non-water body
+  var ndwi = bands.normalizedDifference(['B3','B8']).rename('ndwi')
+// for binary water body layer
+  var thr = ndwi.gt(0.1)
+  var ndci = bands.normalizedDifference(['B5','B4']).rename('ndci') //B5 - 1st red edge
+  return ndci.updateMask(thr)  // for coly chorophyll values        //B4 - band red
+  .copyProperties(img, ['system:time_start', 'system:time_end'])
+  })
+  
+  
+print(sentinel)
+
+//visualization
+Map.addLayer(sentinel.toBands().clip(geometry2),[],'ndci', false)
+var target = sentinel.filterDate('2021-09-08','2021-09-09')
+print(target)
+
+Map.addLayer(target.toBands().clip(geometry2),[],'ndci-target', false)
+//for single picture
+Map.addLayer(target.mean().clip(geometry2),[],'ndci-target-mean', false)
+
+Export.image.toDrive({
+  image: target.mean().clip(geometry2),
+  scale: 20,
+  region: geometry2,
+  maxPixels: 1e13,
+  crs: 'EPSG:4326',
+  folder: 'Chorophyll'
+  })
