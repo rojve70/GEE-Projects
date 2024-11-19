@@ -1,0 +1,75 @@
+
+var roi = ee.FeatureCollection('FAO/GAUL/2015/level1')
+              .filter(ee.Filter.eq('ADM0_NAME', 'Bangladesh'));
+
+
+var dem = ee.Image('USGS/SRTMGL1_003').clip(roi);
+var slope = ee.Terrain.slope(dem);
+
+var dem = ee.Image('USGS/SRTMGL1_003').clip(roi);
+
+var filledDem = dem.focal_min(1).reproject({crs: dem.projection(), scale: 30}); /
+var flowDir = ee.Terrain.aspect(filledDem).rename('flowDir'); 
+
+var flowAccum = filledDem.reduceNeighborhood({
+  reducer: ee.Reducer.sum(),
+  kernel: ee.Kernel.square(1)
+});
+
+
+var logFlowAccum = flowAccum.log().rename('FlowAccumulation');
+
+
+Map.centerObject(roi, 10);
+Map.addLayer(dem, {min: 0, max: 1000, palette: ['blue', 'green', 'yellow', 'red']}, 'DEM');
+Map.addLayer(logFlowAccum, {min: 0, max: 10, palette: ['white', 'blue', 'purple']}, 'Flow Accumulation');
+
+
+var floodExtent = ee.ImageCollection('COPERNICUS/S1_GRD')
+                   .filterDate('2023-06-01', '2023-06-30')
+                   .filterBounds(roi)
+                   .median();
+
+var sentinel2 = ee.ImageCollection('COPERNICUS/S2_SR')
+                   .filterDate('2023-01-01', '2023-12-31')
+                   .filterBounds(roi)
+                   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+                   .median();
+
+var ndvi = sentinel2.normalizedDifference(['B8', 'B4']).rename('NDVI'); 
+
+
+var rainfall = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+                  .filterDate('2023-01-01', '2023-12-31')
+                  .filterBounds(roi)
+                  .sum(); 
+
+var fsi = dem.expression(
+  'w1 * (1 - (elevation / 1000)) + w2 * (1 - slope / 90) + w3 * flowAccum + w4 * rainfall',
+  {
+    'elevation': dem,
+    'slope': slope,
+    'flowAccum': flowAccum,
+    'rainfall': rainfall,
+    'w1': 0.3, 
+    'w2': 0.2, 
+    'w3': 0.3,
+    'w4': 0.2  
+  }
+).rename('FSI');
+
+
+Map.centerObject(roi, 7);
+Map.addLayer(dem, {min: 0, max: 100, palette: ['blue', 'green', 'yellow', 'brown']}, 'Elevation');
+Map.addLayer(flowAccum, {min: 0, max: 5, palette: ['white', 'blue']}, 'Flow Accumulation');
+Map.addLayer(floodExtent, {min: -25, max: 0, palette: ['gray', 'blue']}, 'Flood Extent');
+Map.addLayer(fsi, {min: 0, max: 1, palette: ['white', 'yellow', 'orange', 'red']}, 'Flood Susceptibility');
+
+
+Export.image.toDrive({
+  image: fsi,
+  description: 'FloodSusceptibility_Bangladesh',
+  region: roi,
+  scale: 100,
+  crs: 'EPSG:4326'
+});
