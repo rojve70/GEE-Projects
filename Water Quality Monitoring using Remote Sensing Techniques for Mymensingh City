@@ -1,0 +1,75 @@
+
+var roi = ee.Geometry.Rectangle(90.2, 24.7, 90.5, 24.9); 
+
+var sentinel = ee.ImageCollection('COPERNICUS/S2_SR')
+                .filterDate('2023-01-01', '2023-12-31')  
+                .filterBounds(roi)
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10)) 
+                .median(); 
+
+var calculateTSS = function(image) {
+  var tss = image.select('B4').multiply(10).rename('TSS'); 
+  return image.addBands(tss);
+};
+
+var calculateTurbidity = function(image) {
+  var turbidity = image.select('B11').multiply(0.2).rename('Turbidity'); 
+  return image.addBands(turbidity);
+};
+
+var calculateChla = function(image) {
+  var chla = image.select('B3').divide(image.select('B5')).log().multiply(-1).rename('Chla'); 
+  return image.addBands(chla);
+};
+
+
+var calculateNDCI = function(image) {
+  var ndci = image.normalizedDifference(['B5', 'B4']).rename('NDCI'); 
+  return image.addBands(ndci);
+};
+
+var processedImage = calculateTSS(calculateTurbidity(calculateChla(calculateNDCI(sentinel))));
+
+var tssVis = {min: 0, max: 100, palette: ['blue', 'cyan', 'green', 'yellow', 'red']};
+var turbidityVis = {min: 0, max: 50, palette: ['blue', 'white', 'yellow', 'red']};
+var chlaVis = {min: 0, max: 30, palette: ['blue', 'green', 'yellow', 'orange']};
+var ndciVis = {min: -1, max: 1, palette: ['purple', 'blue', 'green', 'yellow', 'red']};
+
+
+Map.centerObject(roi, 12);
+Map.addLayer(processedImage.select('TSS'), tssVis, 'TSS');
+Map.addLayer(processedImage.select('Turbidity'), turbidityVis, 'Turbidity');
+Map.addLayer(processedImage.select('Chla'), chlaVis, 'Chlorophyll-a');
+Map.addLayer(processedImage.select('NDCI'), ndciVis, 'NDCI');
+
+Export.image.toDrive({
+  image: processedImage.select('TSS'),
+  description: 'TSS_Mymensingh',
+  region: roi,
+  scale: 10,
+  crs: 'EPSG:4326'
+});
+
+Export.image.toDrive({
+  image: processedImage.select('Turbidity'),
+  description: 'Turbidity_Mymensingh',
+  region: roi,
+  scale: 10,
+  crs: 'EPSG:4326'
+});
+
+Export.image.toDrive({
+  image: processedImage.select('Chla'),
+  description: 'Chla_Mymensingh',
+  region: roi,
+  scale: 10,
+  crs: 'EPSG:4326'
+});
+
+Export.image.toDrive({
+  image: processedImage.select('NDCI'),
+  description: 'NDCI_Mymensingh',
+  region: roi,
+  scale: 10,
+  crs: 'EPSG:4326'
+});
