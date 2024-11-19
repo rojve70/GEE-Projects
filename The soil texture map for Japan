@@ -1,0 +1,35 @@
+
+var ROI = ee.FeatureCollection('projects/sacred-veld-428112-m4/assets/japan_Japan_Country_Boundary');
+
+var roigeo = ROI.geometry();
+
+var soil_jap = ee.Image("OpenLandMap/SOL/SOL_TEXTURE-CLASS_USDA-TT_M/v02");
+
+var imageVisParam = {
+  opacity: 1,
+  bands: ["b60", "b100", "b200"],  // Ensure these bands exist in your image
+  min: 4.1,
+  max: 8.9,
+  gamma: 1
+};
+
+var clippedImage = soil_jap.clip(roigeo);
+Map.addLayer(clippedImage, imageVisParam, 'Clipped Image');
+Map.centerObject(ROI);
+
+Export.table.toDrive({
+  collection: ROI,
+  description: 'Clipped_Image_Japan',
+  folder: 'GEE',  // Adjust the scale to your needs,  // Set the region to the clipped geometry
+  fileFormat: 'SHP'
+});
+
+
+
+
+
+
+
+
+
+
