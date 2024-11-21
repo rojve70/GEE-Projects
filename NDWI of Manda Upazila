@@ -1,0 +1,70 @@
+var sentinel2 = ee.ImageCollection('COPERNICUS/S2_HARMONIZED')
+
+ROI = [type: FeatureCollection
+       id: projects/sacred-veld-428112-m4/assets/Manda_upazila]
+
+var imageVisParam = {
+  bands: ['B4', 'B3', 'B2'],
+  min: 1063.7,
+  max: 2729.3
+};
+
+var imageVisParam2 = {
+  bands: ['nd'],
+  min: -0.5609541441997319,
+  max: -0.05664321494073412
+};
+
+// Cloud Masking
+function maskS2clouds(image) {
+  var qa = image.select('QA60')
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+      .and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask).divide(10000);
+}
+
+var manda = sentinel2.filterBounds(ROI)
+            .filterDate('2024-03-24', '2024-04-07') 
+            .filterMetadata('CLOUDY_PIXEL_PERCENTAGE','less_than',50)
+            .map(maskS2clouds)
+            .median()
+            .clip(ROI);
+            
+
+Map.addLayer(manda, imageVisParam, 'image_Manda')
+Map.centerObject(ROI,10);
+print(sentinel2.size())
+
+// Calculate and Visualize NDWI
+var ndwi_manda = manda.normalizedDifference(['B3', 'B8']);
+Map.addLayer(ndwi_manda, imageVisParam2, 'NDWI_map_Manda'); 
+
+// Extract and Visualize Water Bodies
+var waterBodies = ndwi_manda.gt(0.3).selfMask();
+Map.addLayer(waterBodies, {palette: 'blue'}, 'Extracted Water Bodies');
+
+print(manda);
+
+// Extract water bodies
+Export.image.toDrive({
+  image: waterBodies.clip(ROI),
+  description: 'WaterBodies_Manda',
+  region: ROI,
+  scale: 10,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13
+})
+
+// Export NDWI 
+Export.image.toDrive({
+  image: ndwi_manda,            
+  description: 'NDWI_map_Manda',  
+  scale: 10,                      
+  region: ROI,
+  crs: 'EPSG:4326',
+  maxPixels: 1e13               
+});
+
+
